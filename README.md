@@ -13,6 +13,10 @@ Everything is configured from a console that is reachable three ways at once: th
 USB virtual COM port, telnet, and a built-in web page. Every change takes effect
 immediately (nothing needs a reboot) and is saved to flash.
 
+<p align="center">
+  <img src="Docs/Images/UARTBridgePort0.png" alt="UartBridge web page for a serial port: settings and live statistics" width="800">
+</p>
+
 **Just want to use it?** Ready-built firmware is in [`Binaries/`](Binaries):
 download the file for your board and follow [Flashing](#flashing). No compiler
 needed.
@@ -523,6 +527,10 @@ From here on, the same console is available over the network with
 
 ## WiFi configuration
 
+<p align="center">
+  <img src="Docs/Images/UARTBridgeWifi.png" alt="WiFi page: network settings and connection status" width="800">
+</p>
+
 ```
 wifi set ssid "MyNetwork" password "MyPassphrase"
 ```
@@ -564,6 +572,11 @@ Behaviour:
   * the reason for the last failure: bad password, network not found, no IP address, or timeout
 
 ## Serial port configuration
+
+<p align="center">
+  <img src="Docs/Images/UARTBridgePort0.png" alt="Port 0 page: line settings, TCP port and live statistics" width="400">
+  <img src="Docs/Images/UARTBridgePort1.png" alt="Port 1 page: line settings, TCP port and live statistics" width="400">
+</p>
 
 Ports are numbered `0` and `1`.
 
@@ -644,6 +657,10 @@ A port's TCP port can't be 23 (telnet), 80 (the web page), or the other port's T
 `port N clear` resets the counters.
 
 ## Power control configuration
+
+<p align="center">
+  <img src="Docs/Images/UARTBridgePower.png" alt="Power page: control buttons, status and global / ATX / panel settings" width="800">
+</p>
 
 The bridge controls one target machine through GP8 (power), GP9 (reset) and GP10
 (sense). There are two modes, selected with `power set mode`; the default is
@@ -774,17 +791,36 @@ Settings marked "100 ms steps" must be a multiple of 100. All times except
 Browse to `http://<address>/`. There is no password; anyone who can reach port 80
 can use it.
 
-* **Tabs:** WiFi, one per serial port, Power, and System.
+Each area of the device has its own page, shown in the section that covers it:
+
+* [WiFi](#wifi-configuration)
+* [Port 0 and Port 1](#serial-port-configuration)
+* [Power](#power-control-configuration)
+* [System](#system-page)
+
+On every page:
+
 * **Forms:** each group shows the current values. Changed fields are highlighted,
   and **Apply** sends them all in one `set`; **Revert** reloads the values.
-* **Status:** each tab shows the matching `stats` output, refreshed every 3 seconds.
+* **Status:** the matching `stats` output, refreshed every 3 seconds.
 * **Buttons:**
   * Power: on, off, force off, reset, hold reset, release reset.
   * Ports: disconnect client, clear statistics.
   * WiFi: reconnect, disable.
   * System: reboot, factory reset.
   * Destructive actions ask for confirmation.
-* **Console:** a command box on the System tab runs any console command.
+* **Console:** a command box on the System page runs any console command.
+
+### System page
+
+<p align="center">
+  <img src="Docs/Images/UARTBridgeSystem.png" alt="System page: command console, reboot, factory reset and system status" width="800">
+</p>
+
+The System page has a box for any console command, the reboot and factory reset
+buttons, and the `system stats` output.
+
+### How it works
 
 Every action on the page is an ordinary console command, sent with an HTTP POST
 to `/cmd`. Validation, saving and the immediate effect are therefore exactly the
@@ -948,6 +984,7 @@ External status LEDs (sink, active low, so wire them from 3.3 V through a resist
 | `Source/Config.h` | Pins, ports and tunables |
 | `Source/lwipopts.h`, `tusb_config.h` | lwIP and TinyUSB configuration |
 | `Binaries/` | Prebuilt firmware images |
+| `Docs/Images/` | Screenshots used in this README |
 
 ## License
 
