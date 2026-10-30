@@ -13,11 +13,16 @@ Everything is configured from a console that is reachable three ways at once: th
 USB virtual COM port, telnet, and a built-in web page. Every change takes effect
 immediately (nothing needs a reboot) and is saved to flash.
 
+**Just want to use it?** Ready-built firmware is in [`Binaries/`](Binaries):
+download the file for your board and follow [Flashing](#flashing). No compiler
+needed.
+
 ## Contents
 
 * [Features](#features)
 * [Hardware and pinout](#hardware-and-pinout)
 * [Wiring](#wiring)
+* [Prebuilt firmware](#prebuilt-firmware)
 * [Building](#building)
 * [Flashing](#flashing)
 * [First-time setup](#first-time-setup)
@@ -351,6 +356,22 @@ The LED outputs sink current: low means on.
 
 Keep the current to a few mA; 470 Ω to 1 kΩ suits most LEDs.
 
+## Prebuilt firmware
+
+The [`Binaries/`](Binaries) directory holds ready-to-flash images built from this
+source:
+
+| File | Board | Chip |
+|---|---|---|
+| [`UartBridge-PicoW-RP2040.uf2`](Binaries/UartBridge-PicoW-RP2040.uf2) | Raspberry Pi Pico W | RP2040 |
+| [`UartBridge-Pico2W-RP2350.uf2`](Binaries/UartBridge-Pico2W-RP2350.uf2) | Raspberry Pi Pico 2 W | RP2350 |
+
+Pick the file for your board; each chip ignores the other's image. Both need the
+**W** (WiFi) version of the board; the plain Pico and Pico 2 won't run them. To
+download one from GitHub, open the file and use the download button.
+
+To build them yourself, or after changing the source, see [Building](#building).
+
 ## Building
 
 You need a Linux, FreeBSD or macOS host with:
@@ -392,6 +413,14 @@ after any source change, re-running CMake itself if needed.
 To use an existing SDK (2.1.0 or later) instead of the downloaded one, pass
 `-DPICO_SDK_PATH=/path/to/pico-sdk` to `cmake`.
 
+To refresh the prebuilt images in `Binaries/` after a change, build both boards,
+then from the project directory:
+
+```
+cp build/UartBridge.uf2       Binaries/UartBridge-Pico2W-RP2350.uf2
+cp build-picow/UartBridge.uf2 Binaries/UartBridge-PicoW-RP2040.uf2
+```
+
 The two images are **not** interchangeable: each chip ignores the other's image.
 
 | Build directory | Board | BOOTSEL drive name |
@@ -403,7 +432,13 @@ The two images are **not** interchangeable: each chip ignores the other's image.
 
 1. Hold **BOOTSEL** and plug the board into USB, then release the button. A USB
    drive appears, named `RP2350` or `RPI-RP2`.
-2. Copy the matching `UartBridge.uf2` onto it.
+2. Copy the matching image onto it:
+
+   | Drive | Board | Prebuilt image | Or your own build |
+   |---|---|---|---|
+   | `RPI-RP2` | Pico W | `Binaries/UartBridge-PicoW-RP2040.uf2` | `build-picow/UartBridge.uf2` |
+   | `RP2350` | Pico 2 W | `Binaries/UartBridge-Pico2W-RP2350.uf2` | `build/UartBridge.uf2` |
+
 3. The board reboots into the firmware and the drive disappears.
 
 If the drive stays put after the copy, the image is for the other chip.
@@ -912,6 +947,7 @@ External status LEDs (sink, active low, so wire them from 3.3 V through a resist
 | `Source/UsbConsole.c`, `UsbDescriptors.c` | USB CDC console |
 | `Source/Config.h` | Pins, ports and tunables |
 | `Source/lwipopts.h`, `tusb_config.h` | lwIP and TinyUSB configuration |
+| `Binaries/` | Prebuilt firmware images |
 
 ## License
 
