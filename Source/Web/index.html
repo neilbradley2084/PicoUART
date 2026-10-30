@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UartBridge</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--fg:#1d2330;--mute:#667085;--line:#d9dde3;--acc:#2f6fdb;--ok:#1f8a4c;--bad:#c23b32;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#14171c;--card:#1d2128;--fg:#e4e7ec;--mute:#98a2b3;--line:#323844;--acc:#6e9df0;--ok:#4cc38a;--bad:#f07167}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+header h1{margin:0;font-size:19px}
+header span{color:var(--mute);font-size:13px}
+nav{display:flex;gap:4px;padding:10px 16px 0;flex-wrap:wrap}
+nav button{border:1px solid var(--line);border-bottom:none;background:transparent;color:var(--mute);padding:7px 14px;border-radius:7px 7px 0 0;cursor:pointer;font:inherit}
+nav button.on{background:var(--card);color:var(--fg);font-weight:600}
+main{padding:0 16px 24px}
+section{display:none;background:var(--card);border:1px solid var(--line);border-radius:0 8px 8px 8px;padding:16px}
+section.on{display:block}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);margin:4px 0 10px}
+.grid{display:grid;grid-template-columns:150px 1fr;gap:6px 10px;align-items:center}
+.grid label{color:var(--mute);font-size:14px}
+input,select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
+input.dirty,select.dirty{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+button.b{border:1px solid var(--line);background:var(--bg);color:var(--fg);padding:7px 13px;border-radius:6px;cursor:pointer;font:inherit}
+button.b:hover{border-color:var(--acc)}
+button.p{background:var(--acc);border-color:var(--acc);color:#fff}
+button.w{color:var(--bad)}
+pre{margin:0;padding:10px;background:var(--bg);border:1px solid var(--line);border-radius:6px;font:13px/1.45 var(--mono);white-space:pre-wrap;overflow-x:auto;min-height:3em}
+.msg{margin-top:10px}
+.msg pre{border-left:3px solid var(--acc)}
+.hint{color:var(--mute);font-size:13px;margin:8px 0 0}
+#cmdline{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<header><h1>UartBridge</h1><span id="state">connecting...</span></header>
+<nav id="tabs"></nav>
+<main id="main"></main>
+<script>
+"use strict";
+const RATES_FALLBACK=["9600","19200","38400","57600","115200"];
+const ONOFF=["on","off"],POL=["low","high"],DRV=["pushpull","opencollector"],PULL=["none","up","down"],ACT=["pulse","level"];
+const WIFI=[["ssid","text"],["password","password"],["dhcp",ONOFF],["ip","text"],["netmask","text"],["gateway","text"],["channel","text"]];
+let RATES=RATES_FALLBACK;
+const PORT=()=>[["name","text"],["baud",RATES],["databits",["5","6","7","8"]],["parity",["none","even","odd","mark","space"]],["stopbits",["1","2"]],["flow",["none","rtscts"]],["clearonconnect",ONOFF],["tcpport","number"]];
+const POWER=[["Global",[["mode",["panel","atx"]],["startup",["off","on","last"]],["resetpolarity",POL],["resetdrive",DRV],["resetpulse","ms"],["resethold","ms"]]],
+ ["ATX mode",[["psonpolarity",POL],["psondrive",DRV],["pwroktimeout","ms"]]],
+ ["Panel mode",[["resetaction",ACT],["resetpull",PULL],["powerpolarity",POL],["powerdrive",DRV],["powerpull",PULL],["poweraction",ACT],["powerpulse","ms"],["forceoffhold","ms"],["sense",ONOFF],["sensepolarity",["high","low"]],["sensetimeout","ms"]]]];
+const $=(s,e=document)=>e.querySelector(s);
+const el=(t,a={},...c)=>{const e=document.createElement(t);for(const k in a){if(k==="on")for(const ev in a.on)e.addEventListener(ev,a.on[ev]);else e.setAttribute(k,a[k]);}c.forEach(x=>e.append(x));return e;};
+let busy=Promise.resolve();
+function cmd(c){ // one at a time - the device handles requests in order anyway
+ const p=busy.then(()=>fetch("/cmd",{method:"POST",body:c})).then(r=>r.text()).then(t=>t.replace(/\r/g,""));
+ busy=p.catch(()=>{});return p;}
+const quote=v=>'"'+String(v).replace(/\\/g,"\\\\").replace(/"/g,'\\"')+'"';
+function parseGet(t){const o={};t.split("\n").forEach(l=>{const m=l.match(/^  (\S+)\s+(.*)$/);if(m)o[m[1]]=m[2].trim();});return o;}
+function clean(v){if(v===undefined)return "";v=v.replace(/ ms$/,"").replace(/ \(off\)$/,"");if(/^".*"$/.test(v))v=v.slice(1,-1);return v;}
+
+// A form section: fields (name,type), "<prefix> get" fills it, Apply sends one "<prefix> set ..."
+function form(prefix,fields,box){
+ const g=el("div",{class:"grid"}),inputs={};
+ fields.forEach(([n,t])=>{
+  let i;
+  if(Array.isArray(t)){i=el("select");t.forEach(v=>i.append(el("option",{value:v},v)));}
+  else i=el("input",{type:t==="ms"||t==="number"?"number":t,min:"0"});
+  if(t==="ms")i.setAttribute("step",n.match(/timeout|forceoffhold/)?"100":"1");
+  if(t==="password")i.setAttribute("placeholder","unchanged");
+  i.addEventListener("input",()=>i.classList.toggle("dirty",i.value!==i.dataset.v));
+  inputs[n]=i;g.append(el("label",{},n+(t==="ms"?" (ms)":"")),i);});
+ const msg=el("div",{class:"msg"});
+ async function load(){const o=parseGet(await cmd(prefix+" get"));
+  for(const n in inputs){const i=inputs[n];let v=clean(o[n]);if(n==="password")v="";
+   if(i.tagName==="SELECT"&&v&&![...i.options].some(x=>x.value===v))i.append(el("option",{value:v},v));
+   i.value=v;i.dataset.v=v;i.classList.remove("dirty");}}
+ async function apply(){const parts=[];
+  for(const n in inputs){const i=inputs[n];if(i.value!==i.dataset.v&&!(n==="password"&&i.value===""))parts.push(n+" "+quote(i.value));}
+  if(!parts.length){show(msg,"Nothing changed.");return;}
+  show(msg,(await cmd(prefix+" set "+parts.join(" ")))||"Done.");await load();}
+ box.append(g,el("div",{class:"row"},el("button",{class:"b p",on:{click:apply}},"Apply"),el("button",{class:"b",on:{click:load}},"Revert")),msg);
+ return load;}
+function show(box,t){box.replaceChildren(el("pre",{},t.trim()||"Done."));}
+function buttons(box,list,msg){const r=el("div",{class:"row"});
+ list.forEach(([label,c,warn])=>r.append(el("button",{class:"b"+(warn?" w":""),on:{click:async()=>{if(warn&&!confirm(label+"?"))return;show(msg,await cmd(c));refresh();}}},label)));
+ box.append(r);}
+const stats=[];
+function statPane(box,c){const p=el("pre",{},"...");box.append(el("h2",{},"Status"),p);stats.push([p,c]);}
+async function refresh(){for(const [p,c] of stats)if(p.offsetParent!==null)p.textContent=(await cmd(c)).trim();}
+
+const tabs=[],loaders=[];
+function tab(name,build){const s=el("section"),b=el("button",{on:{click:()=>pick(tabs.findIndex(x=>x[0]===b))}},name);
+ $("#tabs").append(b);$("#main").append(s);tabs.push([b,s]);build(s);}
+function pick(n){tabs.forEach(([b,s],i)=>{b.classList.toggle("on",i===n);s.classList.toggle("on",i===n);});try{localStorage.setItem("tab",n);}catch(e){}refresh();}
+
+async function start(){
+ // Ask the firmware for what it supports rather than hard-coding it here
+ const pu=await cmd("port");let ports=2;const m=pu.match(/<0\.\.(\d+)>/);if(m)ports=+m[1]+1;
+ const ps=await cmd("port 0 set");const br=ps.split("Baud rates:")[1];if(br){const r=br.match(/\d+/g);if(r)RATES=r;}
+
+ tab("WiFi",s=>{const c=el("div",{class:"cols"}),a=el("div"),b=el("div"),msg=el("div",{class:"msg"});
+  a.append(el("h2",{},"Settings"));loaders.push(form("wifi",WIFI,a));
+  a.append(el("p",{class:"hint"},"Changing ssid, password or address drops connections, including this page, while the device rejoins."));
+  buttons(a,[["Reconnect","wifi reconnect"],["Disable WiFi","wifi disable",1]],msg);a.append(msg);
+  statPane(b,"wifi stats");c.append(a,b);s.append(c);});
+ for(let n=0;n<ports;n++)tab("Port "+n,s=>{const c=el("div",{class:"cols"}),a=el("div"),b=el("div"),msg=el("div",{class:"msg"});
+  a.append(el("h2",{},"Settings"));loaders.push(form("port "+n,PORT(),a));
+  buttons(a,[["Disconnect client","port "+n+" disconnect"],["Clear statistics","port "+n+" clear"]],msg);a.append(msg);
+  statPane(b,"port "+n+" stats");c.append(a,b);s.append(c);});
+ tab("Power",s=>{const c=el("div",{class:"cols"}),a=el("div"),b=el("div"),msg=el("div",{class:"msg"});
+  b.append(el("h2",{},"Control"));
+  buttons(b,[["On","power on"],["Off","power off",1],["Force off","power forceoff",1],["Reset","power reset",1],["Hold reset","power reset hold",1],["Release reset","power reset release"]],msg);
+  b.append(msg);statPane(b,"power stats");
+  POWER.forEach(([g,f])=>{const box=el("div");box.append(el("h2",{},g));loaders.push(form("power",f,box));a.append(box);});
+  a.append(el("p",{class:"hint"},"mode, poweraction, resetaction and sense can only change with the target off."));
+  c.append(a,b);s.append(c);});
+ tab("System",s=>{const c=el("div",{class:"cols"}),a=el("div"),b=el("div"),msg=el("div",{class:"msg"});
+  a.append(el("h2",{},"Console"));
+  const out=el("pre",{},"Any console command, e.g. help, wifi get, port 0 set baud 9600"),inp=el("input",{id:"cmdline",placeholder:"command"});
+  inp.addEventListener("keydown",async e=>{if(e.key==="Enter"&&inp.value.trim()){out.textContent="> "+inp.value+"\n"+(await cmd(inp.value)).trim();inp.select();}});
+  a.append(inp,el("div",{style:"height:8px"}),out);
+  buttons(b,[["Reboot","system reboot",1],["Factory reset","system reset",1]],msg);b.append(msg);
+  statPane(b,"system stats");c.append(a,b);s.append(c);});
+
+ let t=0;try{t=+localStorage.getItem("tab")||0;}catch(e){}
+ pick(Math.min(t,tabs.length-1));
+ for(const l of loaders)await l();
+ $("#state").textContent="connected";
+ setInterval(()=>refresh().then(()=>$("#state").textContent="connected").catch(()=>$("#state").textContent="no response"),3000);}
+start().catch(e=>$("#state").textContent="no response ("+e+")");
+</script>
+</body>
+</html>

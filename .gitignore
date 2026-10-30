@@ -1,0 +1,13 @@
+# Build output (one directory per board: build/, build-picow/, ...)
+build/
+build-*/
+
+# Subversion working copy metadata
+.svn/
+
+# Editor / OS clutter
+*.swp
+*~
+.vscode/
+.DS_Store
+Thumbs.db
